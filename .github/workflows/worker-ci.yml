@@ -1,0 +1,62 @@
+name: Worker CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  worker-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_DB: mbelyco_promo_local
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+        options: >-
+          --health-cmd="pg_isready -U user -d mbelyco_promo_local"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql://user:password@localhost:5432/mbelyco_promo_local
+      REDIS_URL: redis://localhost:6379
+      NODE_ENV: test
+      LOG_LEVEL: info
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma db push
+      - run: node prisma/seed.js
+      - name: Start worker
+        run: |
+          nohup npm run worker > worker.log 2>&1 &
+          echo $! > worker.pid
+          sleep 2
+      - name: Run worker integration test
+        run: node scripts/test-worker.mjs
+      - name: Print worker logs on failure
+        if: failure()
+        run: |
+          echo "---- worker.log ----"
+          tail -n +200 worker.log || true
