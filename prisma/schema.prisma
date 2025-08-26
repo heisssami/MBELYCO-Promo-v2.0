@@ -1,0 +1,165 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model UserRole {
+  id          Int    @id @default(autoincrement())
+  title       String @unique @db.VarChar(100)
+  description String?
+
+  users           User[]
+  rolePermissions RolePermission[]
+
+  @@map("user_roles")
+}
+
+model Permission {
+  id          Int    @id @default(autoincrement())
+  title       String @unique @db.VarChar(100)
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           Int        @id @default(autoincrement())
+  roleId       Int        @map("role_id")
+  permissionId Int        @map("permission_id")
+  role         UserRole   @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model User {
+  id          Int      @id @default(autoincrement())
+  email       String   @unique @db.VarChar(255)
+  phoneNumber String   @unique @map("phone_number") @db.VarChar(20)
+  firstName   String   @map("first_name") @db.VarChar(100)
+  lastName    String   @map("last_name") @db.VarChar(100)
+  roleId      Int?     @map("role_id")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  role UserRole? @relation(fields: [roleId], references: [id])
+
+  createdBatches   Batch[]      @relation("BatchCreatedBy")
+  assignedBatches  Batch[]      @relation("BatchAssignedTo")
+  reportedCodes    PromoCode[]  @relation("PromoCodeReportedBy")
+  redemptions      Redemption[]
+  auditLogs        AuditLog[]
+
+  @@map("users")
+}
+
+model Batch {
+  id            Int       @id @default(autoincrement())
+  batchCode     String    @unique @map("batch_code") @db.VarChar(50)
+  name          String    @db.VarChar(255)
+  description   String?
+  totalCodes    Int       @map("total_codes")
+  amountPerCode Decimal   @map("amount_per_code") @db.Decimal(10, 2)
+  currency      String    @default("RWF") @db.VarChar(3)
+  status        String    @default("active") @db.VarChar(20)
+  createdBy     Int?      @map("created_by")
+  assignedTo    Int?      @map("assigned_to")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  expiresAt     DateTime? @map("expires_at")
+
+  creator  User? @relation("BatchCreatedBy", fields: [createdBy], references: [id])
+  assignee User? @relation("BatchAssignedTo", fields: [assignedTo], references: [id])
+
+  promoCodes PromoCode[]
+
+  @@map("batches")
+}
+
+model PromoCode {
+  id         Int       @id @default(autoincrement())
+  code       String    @unique @db.VarChar(20)
+  batchId    Int       @map("batch_id")
+  amount     Decimal   @db.Decimal(10, 2)
+  currency   String    @default("RWF") @db.VarChar(3)
+  status     String    @default("active") @db.VarChar(30)
+  isReported Boolean   @default(false) @map("is_reported")
+  reportedAt DateTime? @map("reported_at")
+  reportedBy Int?      @map("reported_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  expiresAt  DateTime? @map("expires_at")
+
+  batch    Batch  @relation(fields: [batchId], references: [id])
+  reporter User?  @relation("PromoCodeReportedBy", fields: [reportedBy], references: [id])
+
+  redemptions Redemption[]
+
+  @@map("promo_codes")
+}
+
+model Redemption {
+  id                Int       @id @default(autoincrement())
+  promoCodeId       Int       @map("promo_code_id")
+  userId            Int       @map("user_id")
+  phoneNumber       String    @map("phone_number") @db.VarChar(20)
+  amount            Decimal   @db.Decimal(10, 2)
+  currency          String    @default("RWF") @db.VarChar(3)
+  status            String    @default("initiated") @db.VarChar(30)
+  momoTransactionId String?   @map("momo_transaction_id") @db.VarChar(100)
+  momoReference     String?   @map("momo_reference") @db.VarChar(100)
+  redeemedAt        DateTime  @default(now()) @map("redeemed_at")
+  disbursedAt       DateTime? @map("disbursed_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  promoCode PromoCode @relation(fields: [promoCodeId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+
+  disbursements Disbursement[]
+
+  @@map("redemptions")
+}
+
+model Disbursement {
+  id                Int       @id @default(autoincrement())
+  redemptionId      Int       @map("redemption_id")
+  momoTransactionId String?   @unique @map("momo_transaction_id") @db.VarChar(100)
+  momoReference     String?   @unique @map("momo_reference") @db.VarChar(100)
+  amount            Decimal   @db.Decimal(10, 2)
+  currency          String    @default("RWF") @db.VarChar(3)
+  status            String    @default("pending") @db.VarChar(30)
+  phoneNumber       String    @map("phone_number") @db.VarChar(20)
+  retryCount        Int       @default(0) @map("retry_count")
+  errorMessage      String?   @map("error_message")
+  processedAt       DateTime? @map("processed_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  redemption Redemption @relation(fields: [redemptionId], references: [id])
+
+  @@map("disbursements")
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?     @map("user_id")
+  action     String   @db.VarChar(100)
+  entityType String   @map("entity_type") @db.VarChar(50)
+  entityId   Int?     @map("entity_id")
+  oldValues  Json?    @map("old_values")
+  newValues  Json?    @map("new_values")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
