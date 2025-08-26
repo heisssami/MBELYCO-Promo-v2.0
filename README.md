@@ -1,5 +1,32 @@
 MBELYCO Promo v2.0
 
+MoMo Disbursement Integration
+- The worker processes BullMQ jobs from the "disbursements" queue.
+- Default behavior is simulation: if MoMo credentials are not provided, the worker marks disbursements as success and updates redemptions to disbursed.
+- When the following environment variables are set, the worker uses MTN MoMo sandbox APIs:
+  - MOMO_BASE_URL
+  - MOMO_API_USER
+  - MOMO_API_KEY
+  - MOMO_SUBSCRIPTION_KEY
+  - MOMO_TARGET_ENV
+  - MOMO_CALLBACK_URL
+- Webhook endpoint: POST /api/v1/webhooks/momo
+  - Headers: Ocp-Apim-Subscription-Key must match MOMO_SUBSCRIPTION_KEY if set
+  - Optional: IP allowlist via MOMO_ALLOWED_IPS (comma-separated)
+  - Body example:
+    { "externalId": "MBELYCO-<redemptionId>", "financialTransactionId": "sandbox-12345" }
+  - Idempotent: multiple deliveries with the same reference do not double-process.
+
+Local & CI
+- Start app: npm run build && npm start
+- Start worker: npm run worker
+- CI runs two integration tests:
+  - scripts/test-worker.mjs: verifies simulation path end-to-end
+  - scripts/test-webhook-momo.mjs: verifies webhook idempotency
+
+
+MBELYCO Promo v2.0
+
 Architecture
 - Next.js App Router (UI + API)
 - Prisma + Postgres
