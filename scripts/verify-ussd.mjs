@@ -49,15 +49,15 @@ async function run() {
   await waitForServer()
 
   const sessionId = '12345'
-  const encPhone = encodeURIComponent(PHONE)
-  const encService = encodeURIComponent(SERVICE)
+  const phoneRaw = PHONE
+  const serviceRaw = SERVICE
 
   // 1) Unsigned -> 401 END Unauthorized
   {
     const { status, text } = await post({
       sessionId,
-      phoneNumber: encPhone,
-      serviceCode: encService,
+      phoneNumber: phoneRaw,
+      serviceCode: serviceRaw,
       text: '',
     })
     expectStatus(status, 401, 'Unsigned')
@@ -69,8 +69,8 @@ async function run() {
     const { status, text } = await post(
       {
         sessionId,
-        phoneNumber: encPhone,
-        serviceCode: encService,
+        phoneNumber: phoneRaw,
+        serviceCode: serviceRaw,
         text: '',
       },
       { [H]: 'deadbeef' }
@@ -86,8 +86,8 @@ async function run() {
     const { status, text } = await post(
       {
         sessionId,
-        phoneNumber: encPhone,
-        serviceCode: encService,
+        phoneNumber: phoneRaw,
+        serviceCode: serviceRaw,
         text: '',
       },
       { [H]: sig }
@@ -107,8 +107,8 @@ async function run() {
       last = await post(
         {
           sessionId,
-          phoneNumber: encPhone,
-          serviceCode: encService,
+          phoneNumber: phoneRaw,
+          serviceCode: serviceRaw,
           text: code,
         },
         { [H]: sig }
@@ -121,15 +121,14 @@ async function run() {
   // 5) Happy path with a different phone/code, and verify BullMQ job key exists
   {
     const phone2 = '+250780000001'
-    const encPhone2 = encodeURIComponent(phone2)
     const code2 = process.env.TEST_USSD_CODE_TWO || 'EFGH-2512-2512-2502'
     const canon = `${sessionId}|${phone2}|${SERVICE}|${code2}`
     const sig = hmac(canon)
     const { status, text } = await post(
       {
         sessionId,
-        phoneNumber: encPhone2,
-        serviceCode: encService,
+        phoneNumber: phone2,
+        serviceCode: serviceRaw,
         text: code2,
       },
       { [H]: sig }
