@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 
 export async function POST() {
-  return NextResponse.json({ message: 'ok' })
+  const res = NextResponse.json({ message: 'ok' })
+  res.cookies.set('auth_token', '', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/', maxAge: 0 })
+  return res
 }
