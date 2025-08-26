@@ -1,7 +1,7 @@
-import { Worker, Queue } from 'bullmq'
-import Redis from 'ioredis'
-import pino from 'pino'
-import { PrismaClient } from '@prisma/client'
+const { Worker, Queue } = require('bullmq')
+const Redis = require('ioredis')
+const pino = require('pino')
+const { PrismaClient } = require('@prisma/client')
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' })
 const redis = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: null, enableReadyCheck: true })
@@ -16,8 +16,8 @@ async function useRealMomo() {
   const subscriptionKey = process.env.MOMO_SUBSCRIPTION_KEY || ''
   const targetEnv = process.env.MOMO_TARGET_ENV || 'sandbox'
   if (!apiUser || !apiKey || !subscriptionKey) return null
-  const mod = await import('./momoClient.js')
-  return { baseUrl, apiUser, apiKey, subscriptionKey, targetEnv, client: mod }
+  const client = require('./momoClient.js')
+  return { baseUrl, apiUser, apiKey, subscriptionKey, targetEnv, client }
 }
 
 const worker = new Worker(
@@ -117,13 +117,13 @@ const worker = new Worker(
   }
 )
 
-worker.on('failed', (job, err) => {
+worker.on('failed', async (job, err) => {
   const attempts = job?.attemptsMade || 0
   const max = job?.opts?.attempts || 0
   if (attempts >= max) {
-    import('../src/lib/queues/dlq').then(({ dlqDisbursementQueue }) => {
-      dlqDisbursementQueue.add('dead', job?.data || {}, { removeOnComplete: true }).catch(() => {})
-    })
+    try {
+      await dlq.add('dead', job?.data || {}, { removeOnComplete: true })
+    } catch {}
   }
   logger.error({ jobId: job?.id, err: err?.message }, 'job failed')
 })
