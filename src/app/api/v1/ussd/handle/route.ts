@@ -3,6 +3,8 @@ import { prisma } from '@/lib/db'
 import { acquireRedemptionLock, releaseRedemptionLock } from '@/lib/idempotency'
 import { disbursementQueue } from '@/lib/queues/disbursement'
 import { auditLog } from '@/lib/audit'
+import { redis } from '@/lib/redis'
+import crypto from 'crypto'
 
 function respond(content: string, cont: boolean, status = 200) {
   return new NextResponse(`${cont ? 'CON' : 'END'} ${content}`, {
@@ -27,16 +29,22 @@ function isValidCodeFormat(code: string) {
   return /^[A-Z0-9-]{10,30}$/.test(code)
 }
 
+function getClientIp(req: NextRequest) {
+  const ipHeader = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || ''
+  return ipHeader.split(',')[0].trim()
+}
+
 function ipAllowed(req: NextRequest): boolean {
   const allowed = process.env.USSD_ALLOWED_IPS
   if (!allowed) return true
-  const ipHeader = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || ''
-  const candidate = ipHeader.split(',')[0].trim()
+  const candidate = getClientIp(req)
   const list = allowed.split(',').map((x) => x.trim()).filter(Boolean)
   return list.length === 0 || list.includes(candidate)
 }
 
-async function readUssdBody(req: NextRequest): Promise<{ sessionId?: string; phoneNumber?: string; text?: string }> {
+type UssdBody = { sessionId?: string; phoneNumber?: string; text?: string; serviceCode?: string }
+
+async function readUssdBody(req: NextRequest): Promise<UssdBody> {
   const ct = req.headers.get('content-type') || ''
   if (ct.includes('application/x-www-form-urlencoded')) {
     const form = await req.formData()
@@ -44,6 +52,7 @@ async function readUssdBody(req: NextRequest): Promise<{ sessionId?: string; pho
       sessionId: String(form.get('sessionId') || ''),
       phoneNumber: String(form.get('phoneNumber') || ''),
       text: String(form.get('text') || ''),
+      serviceCode: String(form.get('serviceCode') || ''),
     }
   }
   const json = await req.json().catch(() => ({} as any))
@@ -51,7 +60,50 @@ async function readUssdBody(req: NextRequest): Promise<{ sessionId?: string; pho
     sessionId: json?.sessionId || '',
     phoneNumber: json?.phoneNumber || '',
     text: json?.text || '',
+    serviceCode: json?.serviceCode || '',
   }
+}
+
+function getSignatureHeader(req: NextRequest) {
+  const configured = (process.env.USSD_SIGNATURE_HEADER || '').toLowerCase()
+  if (configured) {
+    return req.headers.get(configured) || ''
+  }
+  return (
+    req.headers.get('x-signature') ||
+    req.headers.get('x-ussd-signature') ||
+    req.headers.get('x-at-signature') ||
+    ''
+  )
+}
+
+function verifyHmac(payload: UssdBody, signature: string) {
+  const secret = process.env.USSD_HMAC_SECRET
+  if (!secret) return true
+  const canonical = [
+    payload.sessionId || '',
+    payload.phoneNumber || '',
+    payload.serviceCode || '',
+    payload.text || '',
+  ].join('|')
+  const h = crypto.createHmac('sha256', secret).update(canonical).digest('hex')
+  try {
+    const a = Buffer.from(h)
+    const b = Buffer.from(String(signature || ''), 'utf8')
+    if (a.length !== b.length) return false
+    return crypto.timingSafeEqual(a, b)
+  } catch {
+    return false
+  }
+}
+
+async function rateLimit(key: string, limit = Number(process.env.RATE_LIMIT_USSD_PER_MIN || 5), windowSec = 60) {
+  const k = `rl:ussd:${key}`
+  const n = await redis.incr(k)
+  if (n === 1) {
+    await redis.expire(k, windowSec)
+  }
+  return n <= limit
 }
 
 export async function POST(req: NextRequest) {
@@ -60,11 +112,30 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await readUssdBody(req)
+
+  const signature = getSignatureHeader(req)
+  if (process.env.USSD_HMAC_SECRET) {
+    const ok = verifyHmac(body, signature || '')
+    if (!ok) {
+      return respond('Unauthorized', false, 401)
+    }
+  }
+
   const sessionId = body?.sessionId || ''
   const phone = normalizePhone(body?.phoneNumber || '')
   const text = body?.text || ''
 
-  if (!sessionId || !phone) {
+  if (!sessionId) {
+    return respond('Invalid request', false, 400)
+  }
+
+  const rateKey = phone || getClientIp(req)
+  const withinLimit = await rateLimit(rateKey)
+  if (!withinLimit) {
+    return respond('Rate limit exceeded; try again shortly.', false, 429)
+  }
+
+  if (!phone) {
     return respond('Invalid request', false, 400)
   }
 

@@ -32,8 +32,12 @@ USSD (Phase 3)
 - Body fields: sessionId, serviceCode, phoneNumber, text
 - Response: text/plain; starts with "CON " to continue or "END " to finish
 - Security:
-  - Optional IP allowlist via USSD_ALLOWED_IPS="ip1,ip2"
-  - Optional HMAC via USSD_HMAC_SECRET (documented, enforcement can be enabled in a later change)
+  - IP allowlist via USSD_ALLOWED_IPS="ip1,ip2" (uses x-forwarded-for/x-real-ip)
+  - HMAC verification enforced when USSD_HMAC_SECRET is set
+    - Header: defaults to X-Signature (can be overridden via USSD_SIGNATURE_HEADER). Aliases also accepted: X-AT-Signature, X-USSD-Signature
+    - Algorithm: HMAC-SHA256
+    - Canonical string: "sessionId|phoneNumber|serviceCode|text" (empty strings for missing fields)
+- Rate limiting: 5 requests per minute per phone number (override via RATE_LIMIT_USSD_PER_MIN). Falls back to IP if phone is missing.
 - Idempotency: Redis lock redemption:&lt;code&gt;:&lt;phone&gt; to serialize attempts
 
 Local test (form-urlencoded)
@@ -47,6 +51,13 @@ Local test (form-urlencoded)
    curl -X POST http://localhost:3000/api/v1/ussd/handle \
      -H "Content-Type: application/x-www-form-urlencoded" \
      --data "sessionId=12345&phoneNumber=%2B250780000000&serviceCode=*123#&text=ABCD-2512-2512-2501"
+
+Note: When USSD_HMAC_SECRET is set, include the signature header. Example (pseudo):
+  SIG=$(echo -n "12345|+250780000000|*123#|ABCD-2512-2512-2501" | openssl dgst -sha256 -hmac "$USSD_HMAC_SECRET" -hex | cut -d" " -f2)
+  curl -X POST http://localhost:3000/api/v1/ussd/handle \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    -H "${USSD_SIGNATURE_HEADER:-X-Signature}: $SIG" \
+    --data "sessionId=12345&phoneNumber=%2B250780000000&serviceCode=*123#&text=ABCD-2512-2512-2501"
 
 API
 - GET /api/health
