@@ -201,7 +201,7 @@ export async function POST(req: NextRequest) {
 
     const redemption = await prisma.$transaction(async (tx) => {
       const updated = await tx.promoCode.update({
-        where: { id: promo.id, code: promo.code },
+        where: { id: promo.id },
         data: { status: 'redeemed' },
       })
 

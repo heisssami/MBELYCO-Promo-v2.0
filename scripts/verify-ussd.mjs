@@ -118,7 +118,7 @@ async function run() {
     expectStartsWith(last.text, 'END Rate limit exceeded', 'RateLimit body')
   }
 
-  // 5) Happy path with a different phone/code, and verify BullMQ job key exists
+  // 5) Happy path with a different phone/code, and optionally verify BullMQ job key exists
   {
     const phone2 = '+250780000001'
     const code2 = process.env.TEST_USSD_CODE_TWO || 'EFGH-2512-2512-2502'
@@ -136,14 +136,16 @@ async function run() {
     expectStatus(status, 200, 'HappyPath')
     expectStartsWith(text, 'END Success', 'HappyPath body')
 
-    const redis = new Redis(REDIS_URL)
-    try {
-      const keys = await redis.keys('bull:disbursements:*')
-      if (!keys || keys.length === 0) {
-        throw new Error('BullMQ disbursement queue did not register any keys')
+    if ((process.env.TEST_ASSERT_QUEUE_KEYS ?? '1') === '1') {
+      const redis = new Redis(REDIS_URL)
+      try {
+        const keys = await redis.keys('bull:disbursements:*')
+        if (!keys || keys.length === 0) {
+          throw new Error('BullMQ disbursement queue did not register any keys')
+        }
+      } finally {
+        redis.disconnect()
       }
-    } finally {
-      redis.disconnect()
     }
   }
 

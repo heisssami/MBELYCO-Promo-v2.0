@@ -52,6 +52,7 @@ jobs:
       USSD_SIGNATURE_HEADER: X-Signature
       RATE_LIMIT_USSD_PER_MIN: 5
       USSD_ALLOWED_IPS: ""
+      TEST_ASSERT_QUEUE_KEYS: '1'
       NODE_ENV: test
 
     steps:
