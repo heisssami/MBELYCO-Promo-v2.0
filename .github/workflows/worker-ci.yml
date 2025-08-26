@@ -64,7 +64,7 @@ jobs:
         run: |
           nohup npm run worker > worker.log 2>&1 &
           echo $! > worker.pid
-          sleep 5
+          sleep 8
       - name: Run worker integration test
         run: node scripts/test-worker.mjs
       - name: Run MoMo webhook idempotency test

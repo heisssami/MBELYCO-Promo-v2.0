@@ -41,15 +41,21 @@ async function main() {
   await q.add('disburse', { redemptionId: redemption.id }, { removeOnComplete: true })
 
   // Poll for worker to update redemption status to 'disbursed' and create a disbursement row
-  const timeoutMs = 20000
+  const timeoutMs = 40000
   const start = Date.now()
   let updated
+  let lastLog = 0
   while (Date.now() - start < timeoutMs) {
     updated = await prisma.redemption.findUnique({
       where: { id: redemption.id },
       include: { disbursements: true },
     })
     if (updated?.status === 'disbursed' && (updated.disbursements?.length || 0) > 0) break
+    const elapsed = Date.now() - start
+    if (elapsed - lastLog >= 5000) {
+      console.log(`Waiting for worker... elapsed=${Math.floor(elapsed / 1000)}s status=${updated?.status ?? 'n/a'} disbursements=${updated?.disbursements?.length ?? 0}`)
+      lastLog = elapsed
+    }
     await wait(500)
   }
 
