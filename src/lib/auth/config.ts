@@ -1,7 +1,36 @@
 import { prisma } from '../../lib/db'
+import bcrypt from 'bcryptjs'
 
-export async function validateUser(params: { email: string; password: string }) {
-  const user = await prisma.user.findUnique({ where: { email: params.email } })
+export async function hashPassword(password: string) {
+  const salt = await bcrypt.genSalt(10)
+  return bcrypt.hash(password, salt)
+}
+
+export async function verifyPassword(password: string, passwordHash: string) {
+  return bcrypt.compare(password, passwordHash)
+}
+
+export async function getUserWithPermissionsByEmail(email: string) {
+  const user = await prisma.user.findUnique({
+    where: { email },
+    include: {
+      role: {
+        include: {
+          rolePermissions: {
+            include: { permission: true },
+          },
+        },
+      },
+    },
+  })
   if (!user || !user.isActive) return null
-  return { id: user.id, email: user.email, roleId: user.roleId }
+  const roleTitle = user.role?.title || null
+  const permissions =
+    user.role?.rolePermissions.map((rp) => rp.permission.title) || []
+  return {
+    id: user.id,
+    email: user.email,
+    role: roleTitle,
+    permissions,
+  }
 }
