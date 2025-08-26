@@ -18,3 +18,68 @@ jobs:
       - run: npm run type-check
       - run: npm run lint
       - run: npm run build
+
+  ussd-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_DB: mbelyco_promo_local
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+        options: >-
+          --health-cmd="pg_isready -U user -d mbelyco_promo_local"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql://user:password@localhost:5432/mbelyco_promo_local
+      REDIS_URL: redis://localhost:6379
+      USSD_HMAC_SECRET: testsecret
+      USSD_SIGNATURE_HEADER: X-Signature
+      RATE_LIMIT_USSD_PER_MIN: 5
+      USSD_ALLOWED_IPS: ""
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma db push
+      - run: node prisma/seed.js
+      - run: npm run build
+      - name: Start Next.js
+        run: |
+          nohup npm start > .next_server.log 2>&1 &
+          echo $! > next.pid
+          for i in {1..120}; do
+            if curl -sf http://localhost:3000/api/health >/dev/null; then
+              echo "Server ready"
+              break
+            fi
+            sleep 1
+          done
+      - name: Verify USSD HMAC and rate limiting
+        run: npm run test:ussd
+      - name: Print server logs on failure
+        if: failure()
+        run: |
+          echo "---- .next_server.log ----"
+          tail -n +1 .next_server.log || true
