@@ -14,7 +14,8 @@
     "db:studio": "prisma studio",
     "seed": "node prisma/seed.js",
     "worker": "node worker/index.js",
-    "test:ussd": "node ./scripts/verify-ussd.mjs"
+    "test:ussd": "node ./scripts/verify-ussd.mjs",
+    "test:webhook-momo": "node ./scripts/test-webhook-momo.mjs"
   },
   "keywords": [],
   "author": "",

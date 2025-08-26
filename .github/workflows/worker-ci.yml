@@ -48,6 +48,18 @@ jobs:
       - run: npx prisma generate
       - run: npx prisma db push
       - run: node prisma/seed.js
+      - run: npm run build
+      - name: Start Next.js
+        run: |
+          nohup npm start > .next_server.log 2>&1 &
+          echo $! > next.pid
+          for i in {1..120}; do
+            if curl -sf http://localhost:3000/api/health >/dev/null; then
+              echo "Server ready"
+              break
+            fi
+            sleep 1
+          done
       - name: Start worker
         run: |
           nohup npm run worker > worker.log 2>&1 &
@@ -55,8 +67,12 @@ jobs:
           sleep 2
       - name: Run worker integration test
         run: node scripts/test-worker.mjs
-      - name: Print worker logs on failure
+      - name: Run MoMo webhook idempotency test
+        run: node scripts/test-webhook-momo.mjs
+      - name: Print logs on failure
         if: failure()
         run: |
           echo "---- worker.log ----"
           tail -n +200 worker.log || true
+          echo "---- .next_server.log ----"
+          tail -n +200 .next_server.log || true

@@ -1,4 +1,4 @@
-import { Worker } from 'bullmq'
+import { Worker, Queue } from 'bullmq'
 import Redis from 'ioredis'
 import pino from 'pino'
 import { PrismaClient } from '@prisma/client'
@@ -7,6 +7,7 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'info' })
 const redis = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: null, enableReadyCheck: true })
 const concurrency = Number(process.env.WORKER_CONCURRENCY || 5)
 const prisma = new PrismaClient()
+const dlq = new Queue('disbursements:dlq', { connection: redis })
 
 async function useRealMomo() {
   const baseUrl = process.env.MOMO_BASE_URL || 'https://sandbox.momodeveloper.mtn.com'
@@ -15,7 +16,7 @@ async function useRealMomo() {
   const subscriptionKey = process.env.MOMO_SUBSCRIPTION_KEY || ''
   const targetEnv = process.env.MOMO_TARGET_ENV || 'sandbox'
   if (!apiUser || !apiKey || !subscriptionKey) return null
-  const mod = await import('../src/lib/momo/client')
+  const mod = await import('./momoClient.js')
   return { baseUrl, apiUser, apiKey, subscriptionKey, targetEnv, client: mod }
 }
 
@@ -35,11 +36,10 @@ const worker = new Worker(
     }
 
     const reference = `MBELYCO-${redemption.id}`
-
     const real = await useRealMomo()
 
     if (real) {
-      const { baseUrl, apiUser, apiKey, subscriptionKey, targetEnv, client } = real as any
+      const { baseUrl, apiUser, apiKey, subscriptionKey, targetEnv, client } = real
       const amount = String(redemption.amount)
       await prisma.$transaction(async (tx) => {
         await tx.disbursement.create({
@@ -76,8 +76,12 @@ const worker = new Worker(
           payerMessage: 'MBELYCO',
           payeeNote: 'Promo',
         })
-      } catch (e: any) {
-        throw new Error(e?.message || 'momo transfer error')
+      } catch (e) {
+        await prisma.disbursement.updateMany({
+          where: { momoReference: reference },
+          data: { retryCount: { increment: 1 }, errorMessage: String((e && e.message) || 'momo transfer error') },
+        })
+        throw new Error((e && e.message) || 'momo transfer error')
       }
       return
     }
