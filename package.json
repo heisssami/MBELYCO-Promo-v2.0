@@ -11,7 +11,9 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "seed": "node prisma/seed.js",
+    "worker": "node worker/index.js"
   },
   "keywords": [],
   "author": "",
