@@ -13,7 +13,8 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "seed": "node prisma/seed.js",
-    "worker": "node worker/index.js"
+    "worker": "node worker/index.js",
+    "test:ussd": "node ./scripts/verify-ussd.mjs"
   },
   "keywords": [],
   "author": "",
