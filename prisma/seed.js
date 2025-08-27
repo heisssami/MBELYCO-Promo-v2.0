@@ -13,10 +13,10 @@ async function main() {
     where: { email: 'admin@example.com' },
     update: {},
     create: {
-      email: 'admin@example.com',
+      email: 'admin@sandsshare.com',
       phoneNumber: '+250780000000',
-      firstName: 'System',
-      lastName: 'Admin',
+      firstName: 'Shami',
+      lastName: 'SAMI',
       roleId: adminRole.id,
     },
   })
