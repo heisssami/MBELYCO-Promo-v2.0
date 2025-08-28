@@ -18,7 +18,7 @@ MBELYCO Promo v2.0 is a production-grade, full-stack web application that provid
 - **Automated USSD redemption** via Africa's Talking API
 - **Automated disbursements** via MTN MoMo integration
 - **Real-time monitoring and reporting** with comprehensive audit trails
-- **Scalable, modular architecture** built with Next.js 14+
+- **Scalable, modular architecture** built with Next.js
 
 ## 1. Technology Stack
 
